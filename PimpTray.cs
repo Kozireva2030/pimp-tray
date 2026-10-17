@@ -98,7 +98,7 @@ namespace PimpWinTray
                 else Log.Write("проводник не вывел из пакета Claude: автозапуск может не сохраниться");
             }
             bool created;
-            using (var mutex = new Mutex(true, "Local\\PimpWinTray", out created))
+            using (var mutex = new Mutex(true, "Local\\" + Log.AppName, out created))
             {
                 if (!created) return;
                 try { SetProcessDPIAware(); } catch { }
@@ -115,8 +115,10 @@ namespace PimpWinTray
 
     static class Log
     {
+        // Имя для мьютекса, папки настроек и автозапуска: публичная сборка живёт отдельно и не мешает полной.
+        public const string AppName = "PimpTray";
         public static readonly string Dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PimpWinTray");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName);
         static readonly object gate = new object();
 
         // Пишут и главный поток, и фоновые — по одному.
@@ -319,7 +321,7 @@ namespace PimpWinTray
 
         public static string F(string key, params object[] args) { return string.Format(T(key), args); }
 
-        // Ярлык блока мелкими прописными — тем же словом, что в меню: «Неделя» → «НЕДЕЛЯ», «Week» → «WEEK».
+        // Ярлык блока мелкими прописными — тем же словом, что в меню: «Память» → «ПАМЯТЬ», «Memory» → «MEMORY».
         public static string Caps(string key) { return T(key).ToUpper(Culture); }
 
         // Число со словом: по-русски три формы («день|дня|дней»), по-английски две («day|days»).
@@ -528,7 +530,7 @@ namespace PimpWinTray
             return L.Dec(s.EndsWith(".0") ? s.Substring(0, s.Length - 2) : s);
         }
 
-        // «за 3 ч» / «за 1 ч 30 мин» / «за 19 мин» — как MacTemperature.caption на Маке.
+        // «за 3 ч» / «за 1 ч 30 мин» / «за 19 мин».
         public static string Span(TimeSpan span)
         {
             int minutes = (int)Math.Round(span.TotalMinutes);
@@ -770,8 +772,8 @@ namespace PimpWinTray
 
     // ---------------------------------------------------------------- настройки и команды
 
-    // Настройки PMP для Windows: %LOCALAPPDATA%\PimpWinTray\settings.json — да/нет, числа и строки.
-    // Ключ есть — человек выбирал сам; нет — показываем то, что стоит в Claude, или умолчание (как на Маке).
+    // Настройки PMP для Windows: %LOCALAPPDATA%\PimpTray\settings.json — да/нет, числа и строки.
+    // Ключ есть — человек выбирал сам; нет — умолчание.
     static class Settings
     {
         public const string ShowTemp = "showTemp", ShowMemory = "showMemory", ShowLoad = "showLoad";
@@ -780,10 +782,9 @@ namespace PimpWinTray
             WorkflowAheadOpen = "panelWorkflowAheadOpen";
         // Что показывает значок у часов: cpu (по умолчанию) или tokens; корень проектов для блока Workflow (нет — выключен).
         public const string TrayShows = "trayShows", WorkflowRoot = "workflowRoot";
-        // Блоки панели развёрнуты (макет 17.10.2026, ★1.1): пары «Неделя + Сброс», «5 часов + Fable», «Процессор + Видеокарта»
-        // — одним ключом; «Оформление» — ColorsOpen (по умолчанию свёрнуто), остальные по умолчанию развёрнуты.
+        // Блоки панели развёрнуты: пара «Процессор + Видеокарта» — одним ключом, остальные — каждый своим.
         public const string TempOpen = "panelTempOpen", LoadOpen = "panelLoadOpen", MemoryOpen = "panelMemoryOpen";
-        // Раскладка блоков панели (как на Маке): [{id, wide, hidden?}] по порядку; совпала с умолчанием — ключа нет.
+        // Раскладка блоков панели: [{id, wide, hidden?}] по порядку; совпала с умолчанием — ключа нет.
         // Прежние выключатели show* — только для переезда в «hidden» при первом запуске.
         public const string PanelLayout = "panelLayout";
         static readonly string FilePath = Path.Combine(Log.Dir, "settings.json");
@@ -869,7 +870,7 @@ namespace PimpWinTray
     {
         public static readonly object Null = DBNull.Value;
 
-        // Экранирование как у Мака (CommandChannel.jsonString): кавычка, обратная черта и управляющие — \u00xx.
+        // Экранирование: кавычка, обратная черта и управляющие — \u00xx.
         public static string Str(string s)
         {
             var sb = new StringBuilder("\"");
@@ -993,8 +994,7 @@ namespace PimpWinTray
         readonly TrayApp app;
         float k = 1f;
         public DateTime HiddenAt = DateTime.MinValue;
-        // Листы панели, как на Маке: «Настройки» за шестерёнкой, «Токены» — из своей карточки; в полной сборке ещё
-        // «Оформление окна» и «Своя тема» — из блока «Оформление».
+        // Листы панели: «Настройки» за шестерёнкой, «Токены» — из своей карточки.
         public enum Sheet { Panel, Settings, Tokens }
         Sheet sheet = Sheet.Panel;
         // Нажимаемые места нарисованной панели: прямоугольник в пикселях, действие, подсказка, наведение, перетаскивание.
@@ -1100,12 +1100,12 @@ namespace PimpWinTray
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        // Esc по шагам (часть — только в полной сборке): «Своя тема» — отмена; лист — примерка, потом назад; панель — примерка, карточка Workflow,
-        // карточка «Цвет PMP», раскрытое «Оформление», и только потом панель закрывается.
+        // Esc по шагам: лист — примерка, потом назад; панель — примерка, карточка Workflow, карточка «Цвет PMP»,
+        // и только потом панель закрывается.
         void Escape()
         {
-            // Esc при поднятом блоке: всё как было, а отпускание кнопки после этого — не нажатие (на Маке блок
-            // до отпускания просто стоит; без флага отпускание раскрывало «Температуру», красило окна и т. д.).
+            // Esc при поднятом блоке: всё как было, а отпускание кнопки после этого — не нажатие (без флага
+            // отпускание раскрывало «Температуру», красило окна и т. д.).
             if (dragId != null) { swallowUp = (Control.MouseButtons & MouseButtons.Left) != 0; DragEnd(true); return; }
             if (Palette.PreviewAccent != null) { EndHover(); return; }
             if (sheet != Sheet.Panel) { ShowSheet(Sheet.Panel); return; }
@@ -1313,7 +1313,7 @@ namespace PimpWinTray
             if (h != Height) Height = h;
         }
 
-        // Высота — по содержимому (пришли лимиты, открылись настройки); край у панели задач остаётся на месте.
+        // Высота — по содержимому (открылись настройки); край у панели задач остаётся на месте.
         public void Refit()
         {
             if (!Visible) return;
@@ -1394,7 +1394,7 @@ namespace PimpWinTray
             using (var br = new SolidBrush(Color.FromArgb(0x12, 255, 255, 255))) g.FillPath(br, path);
         }
 
-        // Шапка: плашка PMP (нажатие — «Цвет PMP»), тариф и версии, справа шестерёнка настроек, как на Маке.
+        // Шапка: плашка PMP (нажатие — «Цвет PMP»), справа шестерёнка настроек.
         void Header(Graphics g, float pad, float y, float inner)
         {
             bool badgeOver = Zone(g, pad - 4, y, 42, 24, delegate { ToggleAccent(); }, L.T("accent.tip"));
@@ -1418,7 +1418,7 @@ namespace PimpWinTray
                 }
                 using (var br = new SolidBrush(Palette.Bg)) g.FillPath(br, text);
             }
-            // Точка «нажми» на правом верхнем углу плашки (Мак, BadgeHint): не все догадываются, что на неё можно нажать.
+            // Точка «нажми» на правом верхнем углу плашки: не все догадываются, что на неё можно нажать.
             float dx = badge.Right - F(1), dy = badge.Top + F(1);
             using (var br = new SolidBrush(Palette.Bg)) g.FillEllipse(br, dx - F(5), dy - F(5), F(10), F(10));
             using (var br = new SolidBrush(badgeOver || accentOpen ? Palette.Text : Palette.Dim)) g.FillEllipse(br, dx - F(3.5f), dy - F(3.5f), F(7), F(7));
@@ -1449,7 +1449,7 @@ namespace PimpWinTray
 
         // ---------------------------------------------------------------- сворачивание блоков (макет 17.10.2026, ★1.1)
 
-        // Блоки, которые сейчас есть на панели и сворачиваются: лимиты — только когда они пришли; скрытые правой
+        // Блоки, которые сейчас есть на панели и сворачиваются; скрытые правой
         // кнопкой — мимо. «Токены» — уже строка, ведёт на свой лист.
         List<string> FoldKeys()
         {
@@ -1466,15 +1466,13 @@ namespace PimpWinTray
 
         static bool IsOpen(string key) { return Settings.Get(key, true); }
 
-        // Компактный вид при каждом открытии панели (пожелание 17.10.2026): Неделя и Сброс раскрыты, остальное
-        // свёрнуто строками, даже если в прошлый раз раскрывала. Блок с «Оставлять раскрытым» (правая кнопка) —
-        // раскрыт; у Недели с Сбросом это стоит по умолчанию, снять можно тем же пунктом. Сосед по ряду — вместе (SyncRows).
+        // Компактный вид при каждом открытии панели (пожелание 17.10.2026): раскрыты блоки с «Оставлять раскрытым»
+        // (правая кнопка), остальное свёрнуто строками, даже если в прошлый раз раскрывала. Сосед по ряду — вместе (SyncRows).
         static string KeepKey(string key) { return key + "Keep"; }
 
         static bool KeepOpen(string key) { return Settings.Get(KeepKey(key), KeepByDefault(key)); }
 
-        // Раскрыт при открытии панели, пока не сняли «Оставлять раскрытым»: в полной сборке — Неделя с Сбросом,
-        // в публичной — железо (температура с памятью, процессор с видеокартой).
+        // Раскрыт при открытии панели, пока не сняли «Оставлять раскрытым»: железо (температура с памятью, процессор с видеокартой).
         static bool KeepByDefault(string key) { return key == Settings.TempOpen || key == Settings.MemoryOpen || key == Settings.LoadOpen; }
 
         void CompactView()
@@ -1550,14 +1548,14 @@ namespace PimpWinTray
             return bx;
         }
 
-        // Ярлык мелкими прописными, как «НЕДЕЛЯ» (пожелание 17.10.2026: «капсом, как „Неделя“ — таким же цветом»):
+        // Ярлык мелкими прописными:
         // один шрифт и цвет у заголовков блоков, групп настроек и строки версии Claude в шапке.
         SizeF CapsLabel(Graphics g, string text, float x, float y, float w)
         {
             return Txt(g, text.ToUpper(L.Culture), 9f, FontStyle.Bold, Palette.Dim, x, y, w, false);
         }
 
-        // Заголовок сворачиваемого блока — одним шрифтом у всех: ярлык мелкими прописными, как «НЕДЕЛЯ»; справа —
+        // Заголовок сворачиваемого блока — одним шрифтом у всех: ярлык мелкими прописными; справа —
         // главное число (always — и развёрнутым, иначе только свёрнутым), перед ним — пояснение свёрнутого (note) и
         // стрелка, как в Windows: ⌃ свернуть, ⌄ развернуть. Развёрнут — строка 30 над содержимым, свёрнут — весь блок 36.
         bool FoldHead(Graphics g, float x, float y, float w, string key, string cap, string value, Color? valueColor, bool always, string note = null, string fallback = null, string tipText = null, bool quiet = false)
@@ -1602,16 +1600,13 @@ namespace PimpWinTray
             zones.InsertRange(0, mine);
         }
 
-        // ---------------------------------------------------------------- раскладка блоков (Мак: PanelWidgetLayout, WidgetGrid)
+        // ---------------------------------------------------------------- раскладка блоков
 
         // Блок панели: порядок — местом в списке, «широкий» — во всю ширину, «скрыт» — в строке «Скрытые» внизу.
         class Widget { public string Id; public bool Wide, Hidden; }
 
-        // Блоки и их имена в меню и в строке «Скрытые». Порядок — умолчание («Вернуть как было», пожелание 17.10.2026
-        // 08:45: «все остальные слева-справа парами, Workflow одна длинная полоска внизу — стильно»; токены и
-        // оформление — «не такая уж важная информация», половинками в одну строку): Неделя ½ + Сброс ½ · 5 часов ½ +
-        // Fable ½ · Температура ½ + Память ½ · Процессор ½ + Видеокарта ½ · Токены ½ + Оформление ½ · Workflow широкий.
-        // В публичной сборке лимитов и «Оформления» нет: Температура + Память · Процессор + Видеокарта · Токены · Workflow.
+        // Блоки и их имена в меню и в строке «Скрытые». Порядок — умолчание («Вернуть как было»: парами слева-справа,
+        // Workflow — длинной полоской внизу): Температура + Память · Процессор + Видеокарта · Токены · Workflow.
         static readonly string[][] WidgetNames =
         {
             new[] { "temperature", "widget.temperature" }, new[] { "memory", "widget.memory" },
@@ -1625,8 +1620,7 @@ namespace PimpWinTray
         const int LayoutOrder = 6;
         const string LayoutOrderKey = "panelLayoutOrder";
 
-        // Workflow сузить нельзя (Мак, canNarrow). «Оформление» половинкой — только свёрнутым: развёрнутое (полосы
-        // 30 цветов и 8 плиток отсчёта) встаёт своим рядом во всю ширину (Rows).
+        // Workflow сузить нельзя.
         static bool CanNarrow(string id) { return id != "workflow"; }
 
         static string WidgetName(string id)
@@ -1635,7 +1629,7 @@ namespace PimpWinTray
             return n == null ? id : L.T(n[1]);
         }
 
-        // Ключ «развёрнут» блока; у пар лимитов и нагрузки — общий, как было; у «Токенов» — нет (строка-ссылка).
+        // Ключ «развёрнут» блока; у пары нагрузки — общий; у «Токенов» — нет (строка-ссылка).
         static string FoldKeyOf(string id)
         {
             switch (id)
@@ -1661,7 +1655,7 @@ namespace PimpWinTray
 
         List<Widget> layout;
 
-        // Раскладка из settings.json (Мак: normalized): чужие и повторные id — прочь, недостающий — за своим соседом
+        // Раскладка из settings.json: чужие и повторные id — прочь, недостающий — за своим соседом
         // по умолчанию. Ключа нет — умолчание; прежние выключатели «… в панели» переезжают в «скрыт» один раз.
         List<Widget> Widgets()
         {
@@ -1758,10 +1752,8 @@ namespace PimpWinTray
             }).ToList());
         }
 
-        // Ряды (Мак, rows): широкий — свой ряд; узкие — по двое подряд; одинокая половинка — во всю ширину (пустая
-        // половина «выглядела дырой»). Лимитов нет — «Неделя» несёт строку «почему» во всю ширину.
-        // Блоки на панели сейчас: не скрытые; без лимитов — без «Сброса», «5 часов» и Fable; Workflow в публичной
-        // сборке — только когда выбрана папка проектов.
+        // Ряды: широкий — свой ряд; узкие — по двое подряд; одинокая половинка — во всю ширину (пустая
+        // половина «выглядела дырой»). Блоки на панели сейчас: не скрытые; Workflow — только когда выбрана папка проектов.
         List<Widget> VisibleWidgets()
         {
             bool flows = StatusScan.Root() != null;
@@ -1782,7 +1774,7 @@ namespace PimpWinTray
         }
 
         // Где блоки стоят сейчас (логические точки листа) и куда едут: смена раскладки, ширины, скрытие и возврат —
-        // «всё остальное плавно переставляется» пружиной ≈0,3 с без отскока (Мак: .spring settings).
+        // «всё остальное плавно переставляется» пружиной ≈0,3 с без отскока.
         readonly Dictionary<string, PointF> shown = new Dictionary<string, PointF>();
         readonly Dictionary<string, RectangleF> targets = new Dictionary<string, RectangleF>();
         readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer { Interval = 15 };
@@ -1871,7 +1863,7 @@ namespace PimpWinTray
                 var lifted = placed.FirstOrDefault(p => p.Key.Id == dragId);
                 if (lifted.Key != null && mouse.HasValue)
                 {
-                    // Workflow и «Оформление» всегда во всю ширину — едут только по вертикали
+                    // Workflow всегда во всю ширину — едут только по вертикали
                     float lx = CanNarrow(dragId) ? mouse.Value.X / k - grab.X : pad, ly = mouse.Value.Y / k + scroll - grab.Y;
                     var r = lifted.Value;
                     for (int i = 3; i >= 1; i--)
@@ -1941,7 +1933,7 @@ namespace PimpWinTray
             }
         }
 
-        // Температура (график ступенями по 20°, как MacTemperature.scale на Маке) — во всю ширину или половинкой.
+        // Температура (график ступенями по 20°) — во всю ширину или половинкой.
         void TempTile(Graphics g, float x, float y, float w, float h)
         {
             var now = app.Sensors.Now;
@@ -1974,7 +1966,7 @@ namespace PimpWinTray
                     Palette.Dim, x + 14, y + 128, w - 28, false);
         }
 
-        // «Скрытые» (Мак, HiddenWidgetsRow): под всеми блоками подпись и «+ Имя»; нажатие — блок на прежнее место.
+        // «Скрытые»: под всеми блоками подпись и «+ Имя»; нажатие — блок на прежнее место.
         float HiddenRow(Graphics g, float y)
         {
             var hidden = Widgets().Where(w => w.Hidden).ToList();
@@ -2016,7 +2008,7 @@ namespace PimpWinTray
             return hit.Key;
         }
 
-        // Меню блока (Мак, WidgetCell.contextMenu): ширина, «Скрыть блок», «Вернуть как было».
+        // Меню блока: ширина, «Скрыть блок», «Вернуть как было».
         void BlockMenu(string id, Point at)
         {
             var w = Widgets().FirstOrDefault(x => x.Id == id);
@@ -2031,7 +2023,7 @@ namespace PimpWinTray
             size.Click += delegate { w.Wide = !w.Wide; SaveLayout(); Refit(); };
             menu.Items.Add(size);
             menu.Items.Add(L.T("menu.hide"), null, delegate { w.Hidden = true; SaveLayout(); Refit(); });
-            // открытие панели сворачивает всё, кроме Недели с Сбросом и блоков с этой галочкой (пожелание 17.10.2026)
+            // открытие панели сворачивает всё, кроме блоков с этой галочкой (пожелание 17.10.2026)
             var fold = FoldKeyOf(id);
             if (fold != null)
             {
@@ -2060,8 +2052,8 @@ namespace PimpWinTray
             menu.Show(this, at);
         }
 
-        // Долгое нажатие (пожелание 17.10.2026, вместо ручки Мака): левая кнопка на блоке и 0,4 с без сдвига больше 4 px —
-        // блок поднимается и едет за указателем; над чужим блоком встаёт на его место (Мак: move + lastSwap), отпустил —
+        // Долгое нажатие (пожелание 17.10.2026): левая кнопка на блоке и 0,4 с без сдвига больше 4 px —
+        // блок поднимается и едет за указателем; над чужим блоком встаёт на его место, отпустил —
         // раскладка в settings.json; Esc — как было. Сдвинулся раньше или отпустил — обычное нажатие.
         readonly System.Windows.Forms.Timer press = new System.Windows.Forms.Timer { Interval = 400 };
         string pressId, dragId, lastSwap;
@@ -2130,9 +2122,9 @@ namespace PimpWinTray
             Refit();
         }
 
-        // ---------------------------------------------------------------- «Цвет PMP» и (в полной сборке) «Оформление» на панели
+        // ---------------------------------------------------------------- «Цвет PMP» на панели
 
-        // «Цвет PMP» (Мак, AccentCard): девять цветов одним рядом по ширине блока, имя — подсказкой; наведение
+        // «Цвет PMP»: девять цветов одним рядом по ширине блока, имя — подсказкой; наведение
         // примеряет цвет на панели, нажатие красит и значок у часов.
         float AccentCard(Graphics g, float y)
         {
@@ -2173,7 +2165,7 @@ namespace PimpWinTray
             return h;
         }
 
-        // Заголовок группы в карточке — мелкими прописными, как «НЕДЕЛЯ» у лимитов.
+        // Заголовок группы в карточке — мелкими прописными.
         float Caps(Graphics g, float y, string title, string right = null)
         {
             if (g != null)
@@ -2709,7 +2701,7 @@ namespace PimpWinTray
         // Полоса сверху — жирными полосками (пожелание 17.10.2026 08:50: «выполненные — зелёные жирненькие полоски»).
         const float FlowStripH = 8;
 
-        // Короткое имя (Мак: первые слова «о чём»): до «:», «;», «,» или « — », не длиннее 28 знаков — по целому слову, без «…».
+        // Короткое имя: до «:», «;», «,» или « — », не длиннее 28 знаков — по целому слову, без «…».
         static string ShortName(string about)
         {
             var s = about.Trim();
@@ -2766,7 +2758,7 @@ namespace PimpWinTray
         static string FlowKey(StatusProject p, int index) { return p.Folder + "#" + index; }
 
         // Строка Workflow 38: [N] Проект · короткое имя ……… этап · модель / шаги отрезками ……… «2 из 6 · 42 мин».
-        // Нажатие — карточка на месте блока (FlowPager). Раскрытое не помнится (Мак). В карточке (inCard) —
+        // Нажатие — карточка на месте блока (FlowPager). Раскрытое не помнится. В карточке (inCard) —
         // шапка страницы: без нажатия и без короткого имени (под ней «о чём» целиком).
         float FlowRow(Graphics g, float x, float y, float w, StatusProject p, int index, bool showName, bool inCard = false)
         {
@@ -2879,7 +2871,7 @@ namespace PimpWinTray
             return list;
         }
 
-        // Кружок этапа (Мак, progressCard) — единой схемой: ✓ зелёный — пройден, рамочка цвета PMP с пульсом — идёт,
+        // Кружок этапа — единой схемой: ✓ зелёный — пройден, рамочка цвета PMP с пульсом — идёт,
         // «!» жёлтый — ждёт, «✕» красный — упал, залитый серый тусклый — впереди (рамочка — только у идущего).
         void StageDot(Graphics g, float cx, float cy, string state)
         {
@@ -2907,7 +2899,7 @@ namespace PimpWinTray
             using (var br = new SolidBrush(c)) g.FillEllipse(br, r);
         }
 
-        // Когда (Мак, progressCard): «Начался 25 мин назад, в 13:05 · закончит в 13:50», «Завершился в 01:20 · занял 1 ч»,
+        // Когда: «Начался 25 мин назад, в 13:05 · закончит в 13:50», «Завершился в 01:20 · занял 1 ч»,
         // «Ещё не начат».
         // brief — для строки готового: «в 01:20» без «Завершился» и без «занял».
         static string When(StatusProject p, StatusFlow f, bool brief = false)
@@ -3191,7 +3183,7 @@ namespace PimpWinTray
             return L.F("dur.h", L.Dec((minutes / 60.0).ToString("0.#", CultureInfo.InvariantCulture)));
         }
 
-        // «Токены» (Мак: TokensTile): плавная линия расхода за 7 дней (справа — сегодня) и число за сегодня; нажатие —
+        // «Токены»: плавная линия расхода за 7 дней (справа — сегодня) и число за сегодня; нажатие —
         // лист «Токены» с днями, моделями и проектами.
         float TokensCard(Graphics g, float x, float y, float w)
         {
@@ -3268,7 +3260,7 @@ namespace PimpWinTray
 
         // ---------------------------------------------------------------- лист «Токены»
 
-        // Мак: окно «Токены» (TokensWindow): период сверху, итог крупно и сравнение с прошлым таким же периодом,
+        // Окно «Токены»: период сверху, итог крупно и сравнение с прошлым таким же периодом,
         // столбики 7 дней, модели и проекты.
         float DrawTokens(Graphics g)
         {
@@ -3332,7 +3324,7 @@ namespace PimpWinTray
                 Txt(g, L.T("tok.unit"), 11f, FontStyle.Regular, Palette.Dim, CX + sz.Width / k + 6, y + 10, 100, false);
             }
             y += 38;
-            // Сравнение с прошлым таким же периодом (Мак: TokenStats.comparison); «Сегодня» день не кончился — без процента.
+            // Сравнение с прошлым таким же периодом; «Сегодня» день не кончился — без процента.
             string compare = "";
             if (before > 0)
             {
@@ -3419,7 +3411,7 @@ namespace PimpWinTray
 
         // ---------------------------------------------------------------- лист «Настройки»
 
-        // Группы-карточки, как на Маке: открыта всегда одна, справа — что выбрано; чего на Windows нет (жёлтая кнопка,
+        // Группы-карточки: открыта всегда одна, справа — что выбрано; чего на Windows нет (жёлтая кнопка,
         // ⌘Q) — не переносится.
         float DrawSettings(Graphics g)
         {
@@ -3433,7 +3425,7 @@ namespace PimpWinTray
             y += Group(g, y, false, "workflow", L.T("widget.workflow"), root == null ? L.T("flow.off") : Path.GetFileName(root.TrimEnd('\\')), WorkflowGroup) + gap;
             y += Group(g, y, false, "more", L.T("settings.more"), "", MoreGroup) + gap;
 
-            // «О программе · Выйти» — подписи-ссылки одной строкой, как на Маке.
+            // «О программе · Выйти» — подписи-ссылки одной строкой.
             // ширины — по подписям: у «About» и «О программе» они разные
             string about = L.T("settings.about"), quit = L.T("settings.quit");
             float wAbout = Measure(about, 9.5f, FontStyle.Regular) + 12, wQuit = Measure(quit, 9.5f, FontStyle.Regular) + 8;
@@ -3710,7 +3702,7 @@ namespace PimpWinTray
             var t1 = pts[pts.Count - 1].Key;
             var t0 = t1.AddHours(-Sensors.HistoryHours);
             var first = pts[0].Key;
-            // Короткая история растягивается на всю ширину, как на Маке («за 19 мин»).
+            // Короткая история растягивается на всю ширину («за 19 мин»).
             if ((t1 - first).TotalMinutes < 180) t0 = first;
             double span = Math.Max(1, (t1 - t0).TotalSeconds);
             var points = new List<PointF>();
@@ -3760,7 +3752,7 @@ namespace PimpWinTray
         // run / wait / fail / done / plan
         public string State = "plan", About = "", Time = "", Phase = "", Role;
         public int? Done, Total;
-        // Роли целиком (Мак: statusRole): «кодинг · 2 агента · Opus 5.5 high 💭»; прошлые шаги — Past.
+        // Роли целиком: «кодинг · 2 агента · Opus 5.5 high 💭»; прошлые шаги — Past.
         public List<FlowRole> Roles = new List<FlowRole>();
     }
 
@@ -3804,7 +3796,7 @@ namespace PimpWinTray
             catch { return null; }
         }
 
-        // Рабочая копия — не проект (Мак): хвост -wf<N>/-rev/-inst<N> или git worktree (.git — файл).
+        // Рабочая копия — не проект: хвост -wf<N>/-rev/-inst<N> или git worktree (.git — файл).
         public static bool IsWorkingCopy(string dir)
         {
             return WorkingCopy.IsMatch(Path.GetFileName(dir)) || File.Exists(Path.Combine(dir, ".git"));
@@ -3841,7 +3833,7 @@ namespace PimpWinTray
                 if (p.Name.Length == 0) p.Name = name;
                 p.Updated = File.GetLastWriteTime(file);
                 p.Changed = p.Updated;
-                // Когда проект менялся (Мак): свежее из сводки и run-файлов рядом.
+                // Когда проект менялся: свежее из сводки и run-файлов рядом.
                 try
                 {
                     foreach (var run in Directory.GetFiles(Path.GetDirectoryName(file), "run-*.json"))
@@ -3864,7 +3856,7 @@ namespace PimpWinTray
             return t.Length > 1 && t[0] >= '0' && t[0] <= '9' && (t[1] == '️' || t[1] == '⃣');
         }
 
-        // Значок сильнее слова; ни значка, ни слова — впереди (Мак: PanelProjects.blockState).
+        // Значок сильнее слова; ни значка, ни слова — впереди.
         static readonly string[][] Marks =
         {
             new[] { "fail", "🛑", "❌" }, new[] { "wait", "✋", "⚠", "❓", "🙋", "⏸" }, new[] { "plan", "⬜" },
@@ -3902,7 +3894,7 @@ namespace PimpWinTray
             return rest == null ? null : rest.Replace("**", "").Trim();
         }
 
-        // Роль «роль · агенты · модель усилие [💭]» (Мак: PanelProjects.Role).
+        // Роль «роль · агенты · модель усилие [💭]».
         class Role
         {
             public string Name = "", Agents = "", Line, Model = "";
@@ -3982,7 +3974,7 @@ namespace PimpWinTray
                 if (item.Contains("·") && !item.Contains("→") && role.Length > 0 && !role.Any(char.IsDigit)) Roles.Add(new Role(item));
             }
 
-            // Текущая фаза (Мак: PanelProjects.phases): первая роль с 💭, иначе последняя; только у идущих, ждущих и упавших.
+            // Текущая фаза: первая роль с 💭, иначе последняя; только у идущих, ждущих и упавших.
             public StatusFlow Finish()
             {
                 Flow.Roles = PastRoles.Where(r => !Roles.Any(x => x.Name.ToLowerInvariant() == r.Name.ToLowerInvariant()))
@@ -4003,7 +3995,7 @@ namespace PimpWinTray
             }
         }
 
-        // Разбор status.md (Мак: PanelProjects.parse): заголовок «# 🔰Проект», блоки «N️⃣ Workflow …», хвосты «Сейчас:»
+        // Разбор status.md: заголовок «# 🔰Проект», блоки «N️⃣ Workflow …», хвосты «Сейчас:»
         // и «Ждёт …:» (берётся последняя).
         public static StatusProject Parse(string text)
         {
@@ -4059,7 +4051,7 @@ namespace PimpWinTray
             return clean == "" || clean == "ничего" || clean == "нет" || clean == "—" || clean == "-";
         }
 
-        // ---- блок панели (Мак: PanelProjects.snapshot, PanelTiles.groups/tile)
+        // ---- блок панели
 
         public class Tile
         {
@@ -4158,11 +4150,11 @@ namespace PimpWinTray
         }
     }
 
-    // Токены Claude Code по дням (Мак: TokenStats, TokensWindow): реплики модели
+    // Токены Claude Code по дням: реплики модели
     // в %USERPROFILE%\.claude\projects\**\*.jsonl, поле message.usage; одна реплика пишется несколькими строками с тем
     // же message.id и requestId — считается один раз. Токены — вход + запись кеша + чтение кеша + выход («оборот»).
     // Считаем в фоне: у каждого файла помним, докуда прочли, и читаем только дописанное; дни, кончившиеся больше
-    // 10 минут назад, — в %LOCALAPPDATA%\PimpWinTray\tokens.json: после перезапуска их не перечитываем.
+    // 10 минут назад, — в %LOCALAPPDATA%\PimpTray\tokens.json: после перезапуска их не перечитываем.
     static class Tokens
     {
         public const int Days = 14;
@@ -4462,7 +4454,7 @@ namespace PimpWinTray
             catch (Exception e) { Log.Write("токены, кеш: " + e.Message); }
         }
 
-        // «1,2 млн», «340 млн», «2,4 млрд», «12 тыс» (Мак: TokenStats.human).
+        // «1,2 млн», «340 млн», «2,4 млрд», «12 тыс».
         public static string Human(long value)
         {
             double v = value;
@@ -4480,7 +4472,7 @@ namespace PimpWinTray
     class TrayApp : ApplicationContext
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string RunName = "PimpWinTray";
+        const string RunName = Log.AppName;
         // Автозапуск включён, пока его не выключили в настройках: установка из чата Claude пишет его в реестр пакета
         // Claude, а не в настоящий, поэтому программа сама проверяет его при каждом старте.
         static readonly string AutostartOffPath = Path.Combine(Log.Dir, "autostart-off");
@@ -4490,7 +4482,7 @@ namespace PimpWinTray
         readonly Panel panel;
         readonly System.Windows.Forms.Timer fast = new System.Windows.Forms.Timer();
         readonly System.Windows.Forms.Timer minute = new System.Windows.Forms.Timer();
-        // Через него фоновые потоки (обход status.md, токены, в полной сборке — мост) зовут главный поток.
+        // Через него фоновые потоки (обход status.md, токены) зовут главный поток.
         readonly Control marshal = new Control();
         string iconKey = "";
         Icon icon;
@@ -4500,7 +4492,7 @@ namespace PimpWinTray
             marshal.CreateControl();
             GC.KeepAlive(marshal.Handle);
             panel = new Panel(this);
-            // Правый клик — короткое меню, как на Маке (AppDelegate.showShortMenu): всё остальное — в панели и её настройках.
+            // Правый клик — короткое меню: всё остальное — в панели и её настройках.
             // Подписи — при каждом открытии: язык мог смениться, пока меню было закрыто.
             var menu = new ContextMenuStrip { Renderer = new DarkMenuRenderer(), ShowImageMargin = false, ShowCheckMargin = true };
             // Пустое меню WinForms открывать не даёт (Cancel уже стоит) — собрали пункты, снимаем отмену.
@@ -4531,7 +4523,7 @@ namespace PimpWinTray
             SystemEvents.UserPreferenceChanged += OnPrefs;
             SystemEvents.DisplaySettingsChanged += OnPrefs;
             if (!File.Exists(AutostartOffPath) && !AutostartOn()) SetAutostart(true);
-            // Сводки проектов и токены — раз в минуту, в фоне (Мак: StatusFeed, TokenStats).
+            // Сводки проектов и токены — раз в минуту, в фоне.
             minute.Interval = 60000;
             minute.Tick += delegate { RefreshProjects(); RefreshTokens(false); };
             minute.Start();
@@ -4539,7 +4531,7 @@ namespace PimpWinTray
             RefreshTokens(false);
         }
 
-        // Обход status.md в фоне; готово — панель (в полной сборке ещё команда status страницам, если сводки изменились).
+        // Обход status.md в фоне; готово — панель.
         public void RefreshProjects()
         {
             if (StatusScan.Root() == null) return;
@@ -4635,7 +4627,7 @@ namespace PimpWinTray
             panel.Refit();
         }
 
-        // Цвет PMP: плашка у часов и панель (на Маке — PMPAccent, UserDefaults["pmpAccent"]).
+        // Цвет PMP: плашка у часов и панель.
         public void SetAccent(string id)
         {
             Settings.SetValue(Settings.Accent, id);

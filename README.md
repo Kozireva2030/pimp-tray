@@ -27,7 +27,7 @@ The app reads only local files and Windows performance counters. It makes no net
 
 - Tokens come from `%USERPROFILE%\.claude\projects\**\*.jsonl` (Claude Code transcripts): only the `usage` numbers, model, time and working folder of each reply are read.
 - Workflows come from the `status.md` files in the folder you pick, and only after you pick it.
-- Settings, the token cache and a small log live in `%LOCALAPPDATA%\PimpWinTray`.
+- Settings, the token cache and a small log live in `%LOCALAPPDATA%\PimpTray`.
 
 ## Install
 
@@ -42,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 On the first start PMP Tray turns on **Start with Windows** for itself (Settings → Advanced, switch it off if you don't want it). Only one copy runs at a time.
 
-Uninstall: Settings → Advanced → turn off Start with Windows, then Quit and delete the folder and `%LOCALAPPDATA%\PimpWinTray`.
+Uninstall: Settings → Advanced → turn off Start with Windows, then Quit and delete the folder and `%LOCALAPPDATA%\PimpTray`.
 
 ## Using the panel
 
@@ -118,7 +118,7 @@ MIT — see [LICENSE](LICENSE).
 
 **Что показывает.** Значок — нагрузка процессора (жёлтый от 70 %, красный от 90 %) или токены за сегодня (`850`, `12K`, `3.2M`), выбор — «Настройки → Значок у часов». Температура — самая горячая тепловая зона ACPI с графиком за 3 часа (на части ноутбуков датчика нет — «нет датчика»). Память, процессор, видеокарта — нагрузка и график за 3 часа. Токены — по дням за 7 дней, по нажатию — сегодня, вчера, 7 дней, модели и проекты. Workflow (по умолчанию выключено) — идущие, готовые и запланированные из `status.md` в выбранной папке проектов. Цвета: зелёный — нормально, жёлтый — много, красный — критично.
 
-**Приватность.** Программа читает только файлы на этом компьютере и счётчики Windows, в сеть не ходит, ничего никуда не отправляет, прав администратора не просит. Токены — из `%USERPROFILE%\.claude\projects\**\*.jsonl` (только числа `usage`, модель, время и рабочая папка ответа). Настройки, кеш токенов и журнал — в `%LOCALAPPDATA%\PimpWinTray`.
+**Приватность.** Программа читает только файлы на этом компьютере и счётчики Windows, в сеть не ходит, ничего никуда не отправляет, прав администратора не просит. Токены — из `%USERPROFILE%\.claude\projects\**\*.jsonl` (только числа `usage`, модель, время и рабочая папка ответа). Настройки, кеш токенов и журнал — в `%LOCALAPPDATA%\PimpTray`.
 
 **Установка.** Windows 10 или 11 (x64), компилятор есть в .NET Framework 4.8 из состава Windows:
 
@@ -127,7 +127,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 .\PimpTray.exe
 ```
 
-При первом запуске включается «Запускать вместе с Windows» («Настройки → Дополнительно», можно выключить). Удаление: выключить автозапуск, «Выйти», удалить папку и `%LOCALAPPDATA%\PimpWinTray`.
+При первом запуске включается «Запускать вместе с Windows» («Настройки → Дополнительно», можно выключить). Удаление: выключить автозапуск, «Выйти», удалить папку и `%LOCALAPPDATA%\PimpTray`.
 
 **Панель.** Левая кнопка по значку — открыть или закрыть, правая — настройки, язык, «О программе», «Выйти». Нажатие на заголовок блока — свернуть или развернуть; «Свернуть всё» — кнопка сверху. Правая кнопка по блоку — половина или вся ширина, «Скрыть блок», «Оставлять раскрытым», «Вернуть как было», язык; скрытые возвращаются из строки «Скрытые» внизу. Долгое нажатие на блок — перетащить, Esc — как было. Плашка PMP слева сверху — цвет PMP. Ctrl+, — настройки, Esc — шаг назад. Язык — русский или английский, по умолчанию — как у Windows.
 
